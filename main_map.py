@@ -34,7 +34,7 @@ HTML_TEMPLATE = '''
        <select id="themeSelect" onchange="updateMap()">
         <option value="default">🗺️ Default</option>
         <option value="dark">🌒 Dark</option>
-        <option value="retro">📺 Retro</option>
+        <option value="retro">💼 Retro</option>
         <option value="night">🌃 Night</option>
         <option value="aubergine">🍆 Aubergine</option>
        </select>
@@ -59,9 +59,8 @@ HTML_TEMPLATE = '''
         document.getElementById('mapImage').src = `/map.png?labels=${show}&theme=${theme}&t=${new Date().getTime()}`;
     }
 </script>
-
 <br>
-<a href="/download-json">⬇️ Download JSON</a>
+<a href="/download-json">💾 Download JSON</a>
 {% endif %}
 '''
 
@@ -73,18 +72,15 @@ def index():
 def get_coordinates():
     prompt = request.form.get("prompt")
 
-    full_prompt = f"""
-You are an AI assistant. Given a user prompt that may mention one or more locations, extract each distinct place and return a JSON list.
-
+    full_prompt = f"""You are an AI assistant. Given a user prompt that may mention one or more locations, extract each distinct place and return a JSON list.
 Each item must contain:
 - "name" (name of the location),
 - "latitude",
 - "longitude",
 - "fact" (one historical fact about that location),
 - "type" (either "country", "city", or "region")
-
 Only return the raw JSON array.
-Prompt: \"\"\"{prompt}\"\"\"
+Prompt: "{prompt}"
 """
 
     try:
@@ -112,7 +108,7 @@ def download_json():
 def map_png():
     show_labels = request.args.get("labels", "1") == "1"
     theme = request.args.get("theme", "default")
-    
+
     try:
         with open("coordinates.json", "r") as f:
             places = json.load(f)
@@ -127,27 +123,31 @@ def map_png():
         lng = place["longitude"]
         name = urllib.parse.quote(place["name"])
         marker = f"markers=color:red%7Clabel:%7C{lat},{lng}"
+
         if show_labels:
-            marker += f"&markers=label:{name}%7C{lat},{lng}"
+            marker = f"markers=color:red%7Clabel:{name[0].upper()}%7C{lat},{lng}"
+        else:
+            marker = f"markers=color:red%7Clabel:%7C{lat},{lng}"
         marker_params.append(marker)
 
     markers = "&".join(marker_params)
 
-    types = set([p.get("type", "").lower() for p in places])
-    border_type = "country" if "country" in types else "province"
+    types = [p.get("type", "").lower() for p in places]
+    num_countries = sum(1 for t in types if t == "country")  
 
-    # Common styling
+    # If 2 or more distinct countries are mentioned, treat it as international
+    context = "international" if num_countries >= 2 else "national"
+
     style = [
-        "style=element:labels|visibility:off",
+        "style=feature:road|element:labels|visibility:off",
+        "style=feature:poi|element:labels|visibility:off",
+        "style=feature:transit|element:labels|visibility:off",
         "style=feature:road|visibility:off",
         "style=feature:transit|visibility:off",
         "style=feature:poi|visibility:off",
-        "style=feature:landscape|visibility:simplified",
-        "style=feature:water|visibility:simplified",
-        f"style=feature:administrative.{border_type}|visibility:on"
+        "style=feature:landscape|visibility:simplified"
     ]
 
-    # Add theme-specific styling
     themes = {
         "dark": [
             "style=feature:all|element:labels.text.fill|color:0xffffff",
@@ -172,16 +172,55 @@ def map_png():
     if theme in themes:
         style.extend(themes[theme])
 
+    style.append("style=feature:water|element:geometry|color:0xcceeff")
+
+    if context == "international":
+    # Show only country labels and borders
+     style.extend([
+        # Country labels and borders ON
+        "style=feature:administrative.country|element:geometry.stroke|visibility:on|color:0x000000|weight:1.5",
+        "style=feature:administrative.country|element:labels.text.fill|visibility:on|color:0x000000",
+        "style=feature:administrative.country|element:labels.text.stroke|visibility:on|color:0xffffff",
+        "style=feature:administrative.country|element:labels.icon|visibility:off",
+
+        # Province everything OFF
+        "style=feature:administrative.province|element:geometry.stroke|visibility:off",
+        "style=feature:administrative.province|element:labels|visibility:off",
+        "style=feature:administrative.province|element:labels.text.fill|visibility:off",
+        "style=feature:administrative.province|element:labels.text.stroke|visibility:off",
+        "style=feature:administrative.province|element:labels.icon|visibility:off"
+        "style=feature:administrative.province|visibility:off"
+
+    ])
+    else:
+    # Show only province labels and borders
+     style.extend([
+        # Province labels and borders ON
+        "style=feature:administrative.province|element:geometry.stroke|visibility:on|color:0x000000|weight:1.5",
+        "style=feature:administrative.province|element:labels.text.fill|visibility:on|color:0x000000",
+        "style=feature:administrative.province|element:labels.text.stroke|visibility:on|color:0xffffff",
+        "style=feature:administrative.province|element:labels.icon|visibility:off",
+
+        # Country everything OFF
+        "style=feature:administrative.country|element:geometry.stroke|visibility:off",
+        "style=feature:administrative.country|element:labels|visibility:off",
+        "style=feature:administrative.country|element:labels.text.fill|visibility:off",
+        "style=feature:administrative.country|element:labels.text.stroke|visibility:off",
+        "style=feature:administrative.country|element:labels.icon|visibility:off"
+    ])
+
+
     style_string = "&".join(style)
     map_url = f"{base_url}?size=800x600&{markers}&{style_string}&key={GOOGLE_MAPS_API_KEY}"
 
     response = requests.get(map_url)
+    if os.path.exists("map.png"):
+     os.remove("map.png")
 
     with open("map.png", "wb") as f:
-        f.write(response.content)
+     f.write(response.content)
 
     return send_file("map.png", mimetype="image/png")
-
 
 if __name__ == '__main__':
     app.run(debug=True)
