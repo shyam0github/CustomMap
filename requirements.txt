@@ -1,6 +1,25 @@
-OS
-
-KEYS
-
 Libraries to install
+
+# Import Libraries
+
+from flask import Flask, request, jsonify, send_file, render_template_string
+ Instal>> pip install flask
+
+import google.generativeai as genai
+ Install the package>> pip install google-generativeai
+ 
+No Installation Needed (Built-in with Python)
+import json
+import re
+import urllib.parse
+import os
+
+import requests
+Install>> pip install requests
+
+from dotenv import load_dotenv
+ Install>> pip install python-dotenv
+
+from markupsafe import Markup
+ Install>> pip install markupsafe
 
